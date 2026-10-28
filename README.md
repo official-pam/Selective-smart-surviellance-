@@ -1,8 +1,41 @@
-# Person detection and tracking — Emmanuel John
+# Group Selective Surveillance System for Security
 
-Refined source based on the supplied YOLOv8/ByteTrack module. This package does
-not contain trained weights or a face recognition model. Code cleanup and
-parameter changes do not constitute model fine-tuning.
+A security surveillance prototype combining person detection, multi-object
+tracking, restricted-zone monitoring, and face enrollment. It provides components
+for monitoring people within a configured area and distinguishing enrolled
+individuals from unmatched faces for operator review.
+
+Here, **group selective** refers to a locally enrolled group of people and a
+configured monitoring zone. Group membership is based on explicit enrollment,
+not appearance-based demographic classification. An unmatched face indicates
+that no enrolled identity met the matching criteria; it does not establish a
+security threat.
+
+## Project capabilities
+
+- **Person detection:** YOLOv8 detects people in video frames.
+- **Tracking:** ByteTrack associates detections across consecutive frames.
+- **Selective zone monitoring:** a configurable polygon selects people whose
+  foot points fall within the monitored area.
+- **Face onboarding:** a standalone Streamlit UI enrolls named people using
+  uploaded photos or webcam snapshots and stores embeddings locally.
+- **Recognition controls:** cosine similarity thresholds and an ambiguity margin
+  control matching, with a script for validation-based threshold selection.
+- **Security annotations:** the detector displays supplied identity and elapsed
+  time information, including a configured alert countdown.
+
+## Implementation status
+
+The detector/tracker and face enrollment UI are separate components. Connecting
+recognition to the video stream, maintaining timers, and sending actual security
+alerts still require integration with the main application. The current UI
+supports enrollment and single-image recognition testing, not a complete live
+surveillance dashboard.
+
+This repository contains source code and a detector training script. It does not
+include custom-trained detector weights or a fine-tuned face model. The face
+component uses pretrained DeepFace embeddings; threshold calibration does not
+retrain those weights.
 
 ## Setup and detector fine-tuning
 
@@ -33,7 +66,7 @@ if the person class has a different index. The constructor verifies its name.
 For a new or restarted video, create a new detector instance. Do not share one
 instance between streams.
 
-## Changes from the pasted module
+## Detector implementation details
 
 - Restored Python formatting and the `__init__` constructor.
 - Tracks every frame instead of reusing stale boxes on skipped frames. Existing
@@ -49,15 +82,12 @@ Timers, actual alerts, face crops, recognition, and identity cache expiry remain
 the responsibility of your existing pipeline. Expire identity entries when a
 track ends, and clear them on stream resets. A track ID is not a face identity.
 
-## Face recognition work still needed
+## Recognition integration
 
-The supplied text contains no face detector, embedding extractor, gallery,
-matching threshold, or training dataset. Provide that module and identify its
-library before changing it. Improving recognition thresholds requires labelled
-same-person/different-person validation pairs; training model weights requires
-labelled face images and a supported training pipeline. Neither has been done
-in this package. Use held-out people/captures to measure false accepts and false
-rejects; do not describe raw similarity as a probability.
+The included face service supports enrollment and single-image matching. Your
+existing face-recognition and UI files are still needed to adapt it to the main
+surveillance application. Evaluate recognition using held-out captures and
+unknown people before selecting an operating threshold.
 
 ## GitHub
 
@@ -66,7 +96,7 @@ images, embeddings, credentials, and videos out of the repository. The included
 .gitignore excludes them and large model weights. Publish weights separately if
 appropriate. Check the Ultralytics license terms for your intended distribution.
 
-Validation: source compilation only; no training, GPU inference, face accuracy,
+Validation: source compilation and synthetic gallery/calibration checks passed; no training, GPU inference, face accuracy,
 or camera integration has been tested in this environment. After installing,
 record your working dependency versions with `pip freeze > requirements.lock.txt`.
 
@@ -115,3 +145,4 @@ integration remains to be implemented in your camera loop.
 
 API references: https://docs.ultralytics.com/modes/track/ and
 https://github.com/serengil/deepface . No trained weights are supplied.
+
