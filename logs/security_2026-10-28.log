@@ -1,0 +1,16 @@
+2026-10-28 00:09:12.106 | SUCCESS  | src.database:init_database:64 - Database initialized — security.db ready.
+2026-10-28 00:09:13.583 | WARNING  | src.face_recognizer:_load_known_faces:31 - known_faces/ folder not found.
+2026-10-28 00:09:13.585 | INFO     | __main__:main:141 - System started. Press 'q' to quit.
+2026-10-28 00:09:39.359 | INFO     | src.timer_manager:update:26 - 🟢 ID:2 fresh timer started at 00:09:39
+2026-10-28 00:10:12.728 | SUCCESS  | src.timer_manager:update:35 - 🚨 ID:2 — 33.4s — ALERT!
+2026-10-28 00:10:15.187 | SUCCESS  | src.capture:save_alert_images:236 - Alert face saved: captures\alert_face_ID2_20261028_001012.jpg
+2026-10-28 00:10:18.791 | SUCCESS  | src.capture:save_alert_images:248 - Alert frame saved: captures\alert_frame_ID2_20261028_001012.jpg
+2026-10-28 00:10:18.796 | INFO     | __main__:main:197 - 🚨 30s — ID:2 | UNKNOWN | frame saved: captures\alert_frame_ID2_20261028_001012.jpg
+2026-10-28 00:10:18.815 | SUCCESS  | src.database:log_event:92 - Event logged — ID:2 | UNKNOWN
+2026-10-28 00:11:41.564 | INFO     | __main__:main:227 - System shut down.
+2026-10-28 16:08:51.912 | SUCCESS  | src.database:init_database:64 - Database initialized — security.db ready.
+2026-10-28 16:08:52.834 | INFO     | __main__:main:154 - System started. Use Stop camera in the dashboard to quit.
+2026-10-28 16:09:08.312 | INFO     | __main__:main:248 - System shut down.
+2026-10-28 16:11:18.600 | SUCCESS  | src.database:init_database:64 - Database initialized — security.db ready.
+2026-10-28 16:11:19.128 | INFO     | __main__:main:158 - System started. Use Stop camera in the dashboard to quit.
+2026-10-28 16:11:28.667 | INFO     | __main__:main:256 - System shut down.

@@ -1,148 +1,87 @@
 # Group Selective Surveillance System for Security
 
-A security surveillance prototype combining person detection, multi-object
-tracking, restricted-zone monitoring, and face enrollment. It provides components
-for monitoring people within a configured area and distinguishing enrolled
-individuals from unmatched faces for operator review.
+Refinement of [IRFAN18727/smart-security-cam](https://github.com/IRFAN18727/smart-security-cam).
+The existing Streamlit dashboard and camera engine are the application.
+See [INTEGRATION_NOTES.md](INTEGRATION_NOTES.md) for architecture, changes and limits.
 
-Here, **group selective** refers to a locally enrolled group of people and a
-configured monitoring zone. Group membership is based on explicit enrollment,
-not appearance-based demographic classification. An unmatched face indicates
-that no enrolled identity met the matching criteria; it does not establish a
-security threat.
+## Run locally (Windows, Python 3.12)
 
-## Project capabilities
-
-- **Person detection:** YOLOv8 detects people in video frames.
-- **Tracking:** ByteTrack associates detections across consecutive frames.
-- **Selective zone monitoring:** a configurable polygon selects people whose
-  foot points fall within the monitored area.
-- **Face onboarding:** a standalone Streamlit UI enrolls named people using
-  uploaded photos or webcam snapshots and stores embeddings locally.
-- **Recognition controls:** cosine similarity thresholds and an ambiguity margin
-  control matching, with a script for validation-based threshold selection.
-- **Security annotations:** the detector displays supplied identity and elapsed
-  time information, including a configured alert countdown.
-
-## Implementation status
-
-The detector/tracker and face enrollment UI are separate components. Connecting
-recognition to the video stream, maintaining timers, and sending actual security
-alerts still require integration with the main application. The current UI
-supports enrollment and single-image recognition testing, not a complete live
-surveillance dashboard.
-
-This repository contains source code and a detector training script. It does not
-include custom-trained detector weights or a fine-tuned face model. The face
-component uses pretrained DeepFace embeddings; threshold calibration does not
-retrain those weights.
-
-## Setup and detector fine-tuning
-
-Use Python 3.10 or later in a virtual environment:
-
-```sh
-pip install -r requirements.txt
-python train_detector.py --data /path/to/data.yaml --device 0
+```powershell
+python -m venv .venv
+.\.venv\Scripts\python.exe -m pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
+.\.venv\Scripts\python.exe -m pip install -r requirements-local-engine.txt
+.\.venv\Scripts\python.exe -m streamlit run dashboard.py --server.address 127.0.0.1 --server.port 8502
 ```
 
-Use `--device cpu` when no CUDA GPU is available. Supply a YOLO bounding-box
-dataset with person annotations and separate training/validation splits.
-Do not use the earlier four-class wildlife weights for person detection.
-After training, use the printed `best.pt` path:
+On this laptop, `start-dashboard.ps1` can also use the already installed shared
+runtime from the adjacent clone. It prefers this repository's own environment
+when present. First use may download the pretrained model weights. Local
+requirements are the tested Windows route; the original requirements/Docker
+files retain upstream dependency assumptions.
 
-```python
-from detector import PersonDetectorTracker
+Open http://127.0.0.1:8502. In **Face onboarding and matching check**, enroll clear
+reference photos of one consenting person at a time. References are saved as
+local embeddings; uploaded onboarding photos are not saved by this feature.
+Use separate photos to check matching and inspect the scores/rejection reason.
+The browser snapshot option may need the live camera stopped first.
 
-detector = PersonDetectorTracker(model_name="runs/detect/person_finetune/weights/best.pt")
-# For each consecutive BGR video frame:
-people = detector.process_frame(frame)
-annotated = detector.draw_annotations(frame, people, timer_info={}, identities={})
+Under **Live camera**, select the laptop webcam (`0`), a phone stream URL, or
+**Upload a video**, then click **Start camera**. **Stop camera** releases the
+source. Uploaded clips stay under ignored `.runtime/inputs/`; captures and event
+logs remain local. Uploaded videos use clip time for alert timers. Processing
+speed depends on the laptop. No Telegram bot or external inference API is needed.
+Keep the server bound to loopback; this dashboard has no authentication and is
+intended for local demonstrations.
+
+The repository must have the required local packages to start the camera.
+Models are downloaded automatically when first used. The old `models-ready`
+marker from this laptop is not required for another machine.
+
+## Matching and validation
+
+The fixed pipeline is **Facenet128 + OpenCV face detection/alignment + base
+normalization + L2 normalization + cosine similarity**. Standalone Facenet512
+embeddings cannot be reused. The old gallery is preserved separately. Existing
+`known_faces/` reference photos can be imported using the dashboard button.
+
+Threshold **0.60**, separation margin **0.05**, minimum face size and blur gate
+are provisional. A score is not an identity probability. New enrollment does
+not train weights. No model-weight fine-tuning has been performed.
+
+For real calibration, create an ignored `validation/calibration_pairs.csv`:
+
+```csv
+image_a,image_b,same_person
+photos/person_a_session1.jpg,photos/person_a_session2.jpg,1
+photos/person_a_session1.jpg,photos/person_b_session2.jpg,0
 ```
 
-`frame` comes from your existing camera/video loop. This snippet plugs into that
-loop; it is not a standalone video runner. Update PERSON_CLASS_ID in config.py
-if the person class has a different index. The constructor verifies its name.
-For a new or restarted video, create a new detector instance. Do not share one
-instance between streams.
+Include many consenting people, genuine and impostor pairs, and realistic phone
+lighting, pose and blur. Keep enrollment, calibration and final test captures
+separate. Avoid adjacent video frames across splits. The CSV labels must be
+checked manually; the tool does not infer ground truth from names.
 
-## Detector implementation details
-
-- Restored Python formatting and the `__init__` constructor.
-- Tracks every frame instead of reusing stale boxes on skipped frames. Existing
-  DETECTION_FRAME_SKIP imports remain compatible, but this module ignores it.
-- Rebuilds the normalized zone polygon when frame size changes; uses foot-point
-  membership and clips bounding boxes to the frame.
-- Clears current people when no IDs are available; pending/unconfirmed boxes
-  without track IDs are not sent into the identity/timer pipeline.
-- Counts identities only for current in-zone tracks and separates pending IDs.
-- Removes misleading percentage labels for uncalibrated identity scores.
-
-Timers, actual alerts, face crops, recognition, and identity cache expiry remain
-the responsibility of your existing pipeline. Expire identity entries when a
-track ends, and clear them on stream resets. A track ID is not a face identity.
-
-## Recognition integration
-
-The included face service supports enrollment and single-image matching. Your
-existing face-recognition and UI files are still needed to adapt it to the main
-surveillance application. Evaluate recognition using held-out captures and
-unknown people before selecting an operating threshold.
-
-## GitHub
-
-Copy these source files into your project and review the integration. Keep face
-images, embeddings, credentials, and videos out of the repository. The included
-.gitignore excludes them and large model weights. Publish weights separately if
-appropriate. Check the Ultralytics license terms for your intended distribution.
-
-Validation: source compilation and synthetic gallery/calibration checks passed; no training, GPU inference, face accuracy,
-or camera integration has been tested in this environment. After installing,
-record your working dependency versions with `pip freeze > requirements.lock.txt`.
-
-## Face enrollment UI and threshold calibration
-
-This standalone reference UI uses DeepFace Facenet512 with OpenCV detection,
-alignment and cosine similarity. It has not been integrated with your existing
-UI because that source and your recognizer were not supplied.
-
-```sh
-pip install -r requirements-face.txt
-streamlit run app.py --server.address 127.0.0.1
+```powershell
+.\.venv\Scripts\python.exe score_validation_pairs.py validation/calibration_pairs.csv --output validation/calibration_scores.csv
+.\.venv\Scripts\python.exe calibrate_threshold.py validation/calibration_scores.csv --target-far 0.01
+.\.venv\Scripts\python.exe score_validation_pairs.py validation/test_pairs.csv --output validation/test_scores.csv
+.\.venv\Scripts\python.exe calibrate_threshold.py validation/test_scores.csv --evaluate embeddings/threshold.json
 ```
 
-Use Enroll faces to enter a name and upload photos or take a webcam photo.
-Exactly one detected face and a minimum 80-pixel face size are required.
-Samples are stored as embeddings in local SQLite, not raw photos. Repeated
-names add samples to the same identity; use distinct names for distinct people.
-The recognition tab uses a separate photo to test matches. Manage people allows
-deletion. This is a local prototype, without authentication, liveness protection,
-or a continuous video recognition loop. Do not expose the enrollment UI publicly.
+The policy is read by both onboarding checks and live matching. Calibration
+reports empirical false-accept/reject rates, not guaranteed deployment rates.
+The held-out test does not change the policy. Pair verification does not measure
+live multi-person identification, tracking IDs, or the ambiguity margin. Evaluate
+those separately on labelled videos, including people absent from the gallery.
+If no threshold meets the target the tool fails without replacing the policy.
 
-The default 0.70 threshold and 0.05 ambiguity margin are provisional, not claimed
-accuracy improvements. To select a threshold, prepare a private CSV with columns
-`similarity,same_person`, one row per labelled face pair. Labels are 1 for the
-same person and 0 otherwise. Compute similarity using dot products of normalized
-embeddings from extract_embedding, using separate captures rather than the same
-photo twice. Include realistic lighting/pose and difficult negative pairs.
+## Checks and GitHub
 
-```sh
-python calibrate_threshold.py private_validation_pairs.csv --target-far 0.01
+```powershell
+.\.venv\Scripts\python.exe -m unittest discover -s tests -v
 ```
 
-This writes embeddings/threshold.json, which the UI reads on the next rerun.
-The selected operating point meets the requested FAR only on the provided
-validation sample; it does not guarantee production FAR. A small number of
-negative pairs cannot establish a low false-accept rate reliably. Evaluate on
-separate held-out images/people, including unknown queries against the entire
-gallery. Pair verification scores are not a substitute for open-set identification
-evaluation. Revalidate whenever the gallery, model, preprocessing, or margin changes.
-
-To connect to the detector, use gallery.match(extract_embedding(person_crop),
-threshold) and place the returned dictionary in identities[track_id]. Reject
-multi-face crops and clear identities when tracks end or streams restart. This
-integration remains to be implemented in your camera loop.
-
-API references: https://docs.ultralytics.com/modes/track/ and
-https://github.com/serengil/deepface . No trained weights are supplied.
-
+Face data, embeddings, credentials, videos, logs and weights are ignored. Review
+`git diff` and `git status` before committing. Origin points to the upstream
+repository; choose your group's GitHub repository before pushing. No push has
+been made. Do not copy wildlife assignment weights into this project.

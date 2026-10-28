@@ -1,0 +1,14 @@
+# Install CPU-only torch and torchvision from the official PyTorch CPU index first.
+ultralytics>=8.3,<9
+deepface==0.0.93
+tensorflow==2.20.0
+tf-keras>=2.20,<2.21
+numpy>=2.1,<2.3
+protobuf>=5.28,<7
+
+streamlit>=1.40,<2
+plotly>=5,<8
+loguru>=0.7,<1
+python-dotenv>=1,<2
+lap>=0.5,<0.6
+werkzeug>=3,<4

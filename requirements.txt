@@ -1,4 +1,27 @@
-ultralytics>=8.3,<9
-opencv-python>=4.8,<5
-numpy>=1.24,<3
-lap>=0.5.12,<1
+# Core
+ultralytics==8.3.40
+opencv-python==4.10.0.84
+numpy==1.26.4
+Pillow==11.0.0
+
+# Face Recognition
+deepface==0.0.93
+tf-keras
+
+# Alert
+requests==2.32.3
+secure-smtplib==0.1.1
+
+# Config
+python-dotenv==1.0.1
+
+# Logging
+loguru==0.7.2
+
+# Database
+SQLAlchemy==2.0.36
+
+# Dashboard
+streamlit==1.40.1
+plotly==5.24.1
+pandas==2.2.3

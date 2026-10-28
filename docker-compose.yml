@@ -1,0 +1,33 @@
+version: "3.9"
+
+services:
+
+  # Camera system
+  camera:
+    build: .
+    container_name: security_camera
+    command: python main.py
+    volumes:
+      - ./captures:/app/captures
+      - ./logs:/app/logs
+      - ./known_faces:/app/known_faces
+      - ./security.db:/app/security.db
+    env_file:
+      - .env
+    restart: unless-stopped
+
+  # Streamlit dashboard
+  dashboard:
+    build: .
+    container_name: security_dashboard
+    command: streamlit run dashboard.py --server.port 8501 --server.address 0.0.0.0
+    ports:
+      - "8501:8501"
+    volumes:
+      - ./captures:/app/captures
+      - ./security.db:/app/security.db
+    env_file:
+      - .env
+    depends_on:
+      - camera
+    restart: unless-stopped
