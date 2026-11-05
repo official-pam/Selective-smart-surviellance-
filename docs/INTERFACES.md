@@ -32,7 +32,7 @@ RecognitionResult(
 )
 ```
 
-Allowed status values: `KNOWN`, `UNKNOWN`, `UNCERTAIN`, `FACE_UNCLEAR`, `ERROR`. `ERROR` is operational failure, not an identity judgement. A recognition status alone does not trigger an alert: the selection policy also requires an entry into the configured zone.
+Allowed status values: `KNOWN`, `UNKNOWN`, `UNCERTAIN`, `FACE_UNCLEAR`, `ERROR`. `ERROR` is operational failure, not an identity judgement, and should appear as a system problem rather than an intruder decision. A recognition status alone does not trigger an alert: the selection policy also requires a new entry into the configured zone.
 
 ## Selection to event storage
 
@@ -42,22 +42,22 @@ SecurityEvent(
     occurred_at="UTC ISO timestamp",
     track_id=12,
     zone_id="server-room",
-    event_type="unknown_entry",  # or known_entry, face_unclear_entry, exit
+    event_type="unknown_entry",  # or known_entry, uncertain_entry, face_unclear_entry, exit
     recognition_status="UNKNOWN",
     person_name=None,
     similarity=0.23,
     face_image_path="private evidence path or None",
     frame_image_path="private evidence path or None",
-    alert_status="pending / sent / failed / not_required",
+    alert_status="displayed / acknowledged / not_required",
 )
 ```
 
-Abubakar stores every selected event before delivery. Telegram alert delivery updates its status without discarding the event. The dashboard receives read-only event rows and safe image references.
+Abubakar stores every selected event before it is shown as an alert in the Streamlit dashboard. Dashboard alert state is local to the application; there is no Telegram or external message delivery. The dashboard receives event rows and safe local image references.
 
 ## Image and coordinate rules
 
 - Frames and face crops use OpenCV BGR `uint8` arrays while inside Python modules.
 - Bounding boxes are pixel coordinates in the original frame, in `(x1, y1, x2, y2)` order, with the top-left origin.
-- Zone polygons use normalised `(x, y)` points between 0 and 1. The detector converts to pixels for each frame size.
+- Zone polygons drawn in the Streamlit dashboard use normalised `(x, y)` points between 0 and 1. The detector converts them to pixels for each frame size. The dashboard saves the operator's chosen polygon in ignored local configuration, not in a shared commit.
 - All persisted event times use UTC ISO-8601 timestamps.
 - A missing face crop is `None`; it is not an empty fake image.

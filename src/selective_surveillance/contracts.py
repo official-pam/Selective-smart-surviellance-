@@ -20,6 +20,7 @@ class RecognitionStatus(StrEnum):
 class EventType(StrEnum):
     KNOWN_ENTRY = "known_entry"
     UNKNOWN_ENTRY = "unknown_entry"
+    UNCERTAIN_ENTRY = "uncertain_entry"
     FACE_UNCLEAR_ENTRY = "face_unclear_entry"
     ZONE_EXIT = "zone_exit"
 
@@ -101,5 +102,7 @@ class SecurityEvent:
             raise ValueError("Known entry events require a Known recognition result.")
         if self.event_type is EventType.UNKNOWN_ENTRY and self.recognition_status is not RecognitionStatus.UNKNOWN:
             raise ValueError("Unknown entry events require an Unknown recognition result.")
+        if self.event_type is EventType.UNCERTAIN_ENTRY and self.recognition_status is not RecognitionStatus.UNCERTAIN:
+            raise ValueError("Uncertain entry events require an Uncertain recognition result.")
         if self.event_type is EventType.FACE_UNCLEAR_ENTRY and self.recognition_status is not RecognitionStatus.FACE_UNCLEAR:
             raise ValueError("Face-unclear entry events require a Face unclear result.")

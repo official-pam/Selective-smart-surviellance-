@@ -26,7 +26,7 @@ recheck_seconds = 3.0
 
 [alerting]
 cooldown_seconds = 120
-telegram_enabled = false
+visible_dashboard_alerts = true
 
 [storage]
 database_path = "private_data/events.sqlite3"

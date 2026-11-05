@@ -12,6 +12,7 @@ venv/
 
 # Private biometric data and evidence
 private_data/
+configs/zone.local.json
 known_faces/
 captures/
 evidence/

@@ -7,13 +7,14 @@ The team should freeze the model, threshold, zone and camera settings before fin
 | Scenario | Expected result | Evidence to record |
 |---|---|---|
 | Enrolled staff member enters the zone | Event saved; no intruder alert | Identity decision, event row and no-alert outcome |
-| Unenrolled person enters | Photo saved; event saved; alert sent or queued | Recognition result, alert delay/status and evidence paths |
+| Unenrolled person enters | Event saved; visible dashboard alert raised | Recognition result, entry-to-alert delay and local evidence paths |
+| Recognition is uncertain | Event saved as uncertain; visible dashboard warning raised | Best/second similarity, decision reason and alert timing |
 | Person remains outside zone | Ignored by selection rules | Zone result and no intruder alert |
 | One enrolled and one unknown person enter | Alert only for unknown person | Separate track IDs and event decisions |
 | Entrant's face is turned away or unusable | Face-unclear event/alert | Clear reason; do not call this Unknown |
 | Same person stays two minutes | Cooldown limits repeated alerts | Number and timing of events/alerts |
 | Low light | Detection still attempted; recognition effect measured | Detection recall and recognition outcome by lighting group |
-| No internet | Event/evidence saved; alert pending or queued | Local event row and later delivery outcome |
+| Camera disconnects during operation | Dashboard shows camera offline; no false event; processing resumes after reconnect | Disconnect/reconnect times, system status and event consistency |
 
 ## Extended real-time scenarios
 
@@ -34,6 +35,6 @@ Choose the similarity threshold using validation photos for both enrolled and un
 
 ## Detection, zone, alert and speed measures
 
-Detection owner reports person precision/recall, zone-membership accuracy, track ID switches and processed frames per second. Alert/storage owner reports entry-to-alert delay, cooldown behaviour and delivery success when the network is absent. Integration reports completed end-to-end scenarios out of total, event consistency, system FPS, latency, crashes and recovered errors.
+Detection owner reports person precision/recall, zone-membership accuracy, track ID switches and processed frames per second. Alert/storage owner reports entry-to-dashboard-alert delay and cooldown behaviour. Integration reports completed end-to-end scenarios out of total, event consistency, system FPS, latency, crashes and recovered errors.
 
 Video frames from one clip are correlated. Report the number of independent people, captures and clips, and avoid presenting thousands of neighbouring frames as thousands of independent tests. Include the hardware, video resolution, frame sampling, model versions and settings.
