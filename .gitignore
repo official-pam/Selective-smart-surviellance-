@@ -1,6 +1,7 @@
 # Python
 __pycache__/
 *.py[cod]
+*.egg-info/
 .pytest_cache/
 .ipynb_checkpoints/
 .venv/
@@ -36,5 +37,7 @@ output/
 # Editors and operating systems
 .idea/
 .vscode/
+.agents/
+.claude/
 .DS_Store
 Thumbs.db

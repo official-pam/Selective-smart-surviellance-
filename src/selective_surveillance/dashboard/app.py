@@ -1,5 +1,6 @@
 import io
 import csv
+import hashlib
 import json
 import time
 import tempfile
@@ -8,12 +9,18 @@ from datetime import datetime
 from pathlib import Path
 
 import cv2
+import numpy as np
 import streamlit as st
 
 from PIL import Image, ImageDraw, ImageFont, ImageOps
 from streamlit_drawable_canvas import st_canvas
 
 from selective_surveillance.integration.controller import SurveillanceController
+from selective_surveillance.dashboard.zone_config import (
+    clear_zone,
+    load_zone,
+    save_zone,
+)
 
 
 # ============================================================
@@ -26,6 +33,7 @@ CANVAS_WIDTH = 960
 CANVAS_HEIGHT = 540
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
+ZONE_CONFIG_PATH = PROJECT_ROOT / "configs" / "zone.local.json"
 
 st.set_page_config(
     page_title=APP_TITLE,
@@ -57,6 +65,7 @@ def initialise_state():
         "canvas_version": 0,
         "last_area_shape": "Polygon",
         "uploaded_frame_bytes": None,
+        "active_video_path": None,
         "page": "Dashboard",
         "last_event_ids": set(),
     }
@@ -165,6 +174,27 @@ def frame_to_display(frame):
     )
 
     return Image.fromarray(rgb)
+
+
+def resize_frame_to_canvas(frame):
+    """Fit a frame inside the drawing canvas without stretching it."""
+    if frame is None or frame.size == 0:
+        return np.zeros((CANVAS_HEIGHT, CANVAS_WIDTH, 3), dtype=np.uint8)
+
+    frame_height, frame_width = frame.shape[:2]
+    scale = min(
+        CANVAS_WIDTH / frame_width,
+        CANVAS_HEIGHT / frame_height,
+    )
+    resized_width = max(1, round(frame_width * scale))
+    resized_height = max(1, round(frame_height * scale))
+    resized = cv2.resize(frame, (resized_width, resized_height))
+
+    canvas = np.zeros((CANVAS_HEIGHT, CANVAS_WIDTH, 3), dtype=np.uint8)
+    left = (CANVAS_WIDTH - resized_width) // 2
+    top = (CANVAS_HEIGHT - resized_height) // 2
+    canvas[top:top + resized_height, left:left + resized_width] = resized
+    return canvas
 
 
 # ============================================================
@@ -319,6 +349,29 @@ def extract_zone_points(region):
 
     return points
 
+
+def load_saved_region(source):
+    """Load a saved zone only when it belongs to the selected camera/video."""
+    try:
+        region = load_zone(source, ZONE_CONFIG_PATH)
+        if region is None:
+            return None
+        extract_zone_points(region)
+        return region
+    except (AttributeError, TypeError, ValueError):
+        return None
+
+
+def save_region_for_source(source, region):
+    """Save the zone locally without writing the camera URL or password."""
+    extract_zone_points(region)
+    save_zone(source, region, ZONE_CONFIG_PATH)
+
+
+def clear_saved_region(source):
+    """Remove this camera's locally saved boundary after an explicit Clear."""
+    clear_zone(source, ZONE_CONFIG_PATH)
+
 def draw_saved_region(frame, region):
 
     if frame is None or not region:
@@ -403,8 +456,29 @@ def connect_camera():
         address = st.session_state.stream_address
 
         if st.session_state.active_camera_source != address:
-            st.session_state.saved_region = None
-            st.session_state.draft_region_json = None
+            previous_video_path = st.session_state.get("active_video_path")
+            if previous_video_path and previous_video_path != address:
+                controller.disconnect_camera()
+                try:
+                    Path(previous_video_path).unlink(missing_ok=True)
+                except OSError:
+                    pass
+                st.session_state.active_video_path = None
+                st.session_state.video_source_active = False
+
+            st.session_state.saved_region = load_saved_region(address)
+            st.session_state.draft_region_json = (
+                st.session_state.saved_region.get("drawing")
+                if st.session_state.saved_region
+                else None
+            )
+            restored_shape = (
+                st.session_state.saved_region.get("shape", "polygon").capitalize()
+                if st.session_state.saved_region
+                else "Polygon"
+            )
+            st.session_state.area_shape = restored_shape
+            st.session_state.last_area_shape = restored_shape
             st.session_state.canvas_version += 1
 
         frame = controller.connect_camera(address)
@@ -441,6 +515,14 @@ def disconnect_camera():
     st.session_state.camera_frame = None
 
     st.session_state.video_source_active = False
+
+    active_video_path = st.session_state.get("active_video_path")
+    if active_video_path:
+        try:
+            Path(active_video_path).unlink(missing_ok=True)
+        except OSError:
+            pass
+        st.session_state.active_video_path = None
 
 
 # ============================================================
@@ -525,10 +607,7 @@ def monitoring_loop():
     # The detector and region coordinates use the same
     # 960 x 540 coordinate system.
 
-    frame = cv2.resize(
-        frame,
-        (CANVAS_WIDTH, CANVAS_HEIGHT)
-    )
+    frame = resize_frame_to_canvas(frame)
 
     annotated_frame, new_events = controller.process_frame(frame)
 
@@ -537,7 +616,7 @@ def monitoring_loop():
     st.image(
         frame_to_display(annotated_frame),
         caption="Live surveillance feed",
-        use_container_width=True
+        width="stretch"
     )
 
     if new_events:
@@ -585,7 +664,7 @@ def show_event_card(event):
 
                 st.image(
                     event["image"],
-                    use_container_width=True
+                    width="stretch"
                 )
 
             else:
@@ -673,7 +752,7 @@ def show_alert_popup():
 
     with st.popover(
         f"🔔 Alerts ({len(events)})",
-        use_container_width=True
+        width="stretch"
     ):
 
         st.markdown("### Recent Security Alerts")
@@ -733,6 +812,7 @@ with st.sidebar:
         [
             "Dashboard",
             "Live Monitoring",
+            "Face Enrollment",
             "Event History",
             "Camera Settings"
         ],
@@ -805,14 +885,14 @@ if page == "Dashboard":
         
         st.image(
             frame_to_display(preview_frame),
-            use_container_width=True
+            width="stretch"
         )
 
     else:
 
         st.image(
             make_placeholder_frame(),
-            use_container_width=True
+            width="stretch"
         )
 
     st.markdown("### Quick Controls")
@@ -824,7 +904,7 @@ if page == "Dashboard":
         if st.button(
             "Connect Camera",
             type="primary",
-            use_container_width=True
+            width="stretch"
         ):
 
             connect_camera()
@@ -833,7 +913,7 @@ if page == "Dashboard":
 
         if st.button(
             "Disconnect Camera",
-            use_container_width=True
+            width="stretch"
         ):
 
             disconnect_camera()
@@ -879,7 +959,7 @@ elif page == "Live Monitoring":
         if st.button(
             "Load Uploaded Video",
             type="primary",
-            use_container_width=True,
+            width="stretch",
             disabled=st.session_state.monitoring
         ):
 
@@ -894,20 +974,21 @@ elif page == "Live Monitoring":
                     uploaded_video.name
                 ).suffix.lower()
 
+                video_bytes = uploaded_video.getvalue()
+                video_id = hashlib.sha256(video_bytes).hexdigest()[:16]
                 video_path = (
                     Path(tempfile.gettempdir())
-                    / f"selective_surveillance_video{video_extension}"
+                    / f"selective_surveillance_video_{video_id}{video_extension}"
                 )
 
-                video_path.write_bytes(
-                    uploaded_video.getvalue()
-                )
+                video_path.write_bytes(video_bytes)
 
                 # Mark this source as an uploaded video.
                 st.session_state.video_source_active = True
 
                 # Pass the video path to the existing controller.
                 st.session_state.stream_address = str(video_path)
+                st.session_state.active_video_path = str(video_path)
 
                 connect_camera()
 
@@ -951,7 +1032,7 @@ elif page == "Live Monitoring":
 
             st.image(
                 frame_to_display(preview_frame),
-                use_container_width=True
+                width="stretch"
             )
 
         else:
@@ -962,7 +1043,7 @@ elif page == "Live Monitoring":
 
         st.image(
             make_placeholder_frame(),
-            use_container_width=True
+            width="stretch"
         )
 
         st.warning("Camera is not connected.")
@@ -976,7 +1057,7 @@ elif page == "Live Monitoring":
         if st.button(
             "Start Monitoring",
             type="primary",
-            use_container_width=True,
+            width="stretch",
             disabled=not st.session_state.camera_connected
         ):
 
@@ -988,7 +1069,7 @@ elif page == "Live Monitoring":
 
         if st.button(
             "Stop Monitoring",
-            use_container_width=True
+            width="stretch"
         ):
 
             stop_monitoring()
@@ -1016,10 +1097,7 @@ elif page == "Live Monitoring":
     if st.session_state.camera_frame is not None:
 
         frame = frame_to_display(
-            cv2.resize(
-                st.session_state.camera_frame,
-                (CANVAS_WIDTH, CANVAS_HEIGHT)
-            )
+            resize_frame_to_canvas(st.session_state.camera_frame)
         )
 
     elif st.session_state.uploaded_frame_bytes:
@@ -1028,7 +1106,7 @@ elif page == "Live Monitoring":
             io.BytesIO(st.session_state.uploaded_frame_bytes)
         ).convert("RGB")
 
-        frame = ImageOps.fit(
+        frame = ImageOps.pad(
             frame,
             (CANVAS_WIDTH, CANVAS_HEIGHT)
         )
@@ -1048,6 +1126,11 @@ elif page == "Live Monitoring":
         st.session_state.draft_region_json = None
 
         st.session_state.saved_region = None
+
+        clear_saved_region(
+            st.session_state.active_camera_source
+            or st.session_state.stream_address
+        )
 
         st.session_state.canvas_version += 1
 
@@ -1083,7 +1166,7 @@ elif page == "Live Monitoring":
         if st.button(
             "Save Restricted Region",
             type="primary",
-            use_container_width=True
+            width="stretch"
         ):
 
             if not st.session_state.draft_region_json:
@@ -1110,6 +1193,12 @@ elif page == "Live Monitoring":
                         st.session_state.saved_region
                     )
 
+                    save_region_for_source(
+                        st.session_state.active_camera_source
+                        or st.session_state.stream_address,
+                        st.session_state.saved_region,
+                    )
+
                     if len(points) < 3:
                         raise ValueError("Invalid region.")
 
@@ -1125,10 +1214,15 @@ elif page == "Live Monitoring":
 
         if st.button(
             "Clear Region",
-            use_container_width=True
+            width="stretch"
         ):
 
             st.session_state.saved_region = None
+
+            clear_saved_region(
+                st.session_state.active_camera_source
+                or st.session_state.stream_address
+            )
 
             st.session_state.draft_region_json = None
 
@@ -1149,6 +1243,97 @@ elif page == "Live Monitoring":
             file_name="restricted_region.json",
             mime="application/json"
         )
+
+
+# ============================================================
+# FACE ENROLLMENT
+# ============================================================
+
+elif page == "Face Enrollment":
+
+    page_header(
+        "Face Enrollment",
+        "Add a consenting person's face using several genuine images."
+    )
+
+    st.info(
+        "I should use at least 3 separate photos of the same consenting person. "
+        "Each photo must show exactly one clear face. The app creates a small "
+        "set of brightness, contrast and flipped previews, then averages the "
+        "embeddings into one saved face template. Augmented copies are not "
+        "extra independent test trials and do not provide anti-spoofing."
+    )
+
+    with st.form("face_enrollment_form"):
+
+        first_name = st.text_input("First name")
+        surname = st.text_input("Surname")
+        uploaded_faces = st.file_uploader(
+            "Upload one or more images of the same person",
+            type=["png", "jpg", "jpeg"],
+            accept_multiple_files=True,
+            help="Use separate photos with natural lighting or expression changes. Do not upload collages or group photos.",
+        )
+        consent_given = st.checkbox(
+            "I have this person's permission to create and store their face template locally."
+        )
+        submit_enrollment = st.form_submit_button(
+            "Create Face Profile",
+            type="primary",
+            width="stretch",
+        )
+
+    if submit_enrollment:
+
+        if not consent_given:
+            st.error("Confirm the person's permission before enrolling a face.")
+
+        elif len(uploaded_faces or []) < 3:
+            st.error("Upload at least 3 separate face images to build a useful profile.")
+
+        else:
+            face_images = []
+
+            try:
+                for uploaded_face in uploaded_faces:
+                    image = Image.open(
+                        io.BytesIO(uploaded_face.getvalue())
+                    ).convert("RGB")
+                    face_images.append(
+                        cv2.cvtColor(np.asarray(image), cv2.COLOR_RGB2BGR)
+                    )
+
+                enrollment = get_controller().enroll_person_from_images(
+                    first_name,
+                    surname,
+                    face_images,
+                )
+
+                st.success(
+                    f"Enrolled {enrollment['name']} from "
+                    f"{enrollment['capture_count']} real captures and "
+                    f"{enrollment['augmentation_count']} generated variations."
+                )
+
+                st.markdown("### Augmentation preview")
+                preview_columns = st.columns(5)
+                for index, (caption, image_bgr) in enumerate(
+                    enrollment["preview_images"]
+                ):
+                    with preview_columns[index % 5]:
+                        st.image(
+                            cv2.cvtColor(image_bgr, cv2.COLOR_BGR2RGB),
+                            caption=caption,
+                            width="stretch",
+                        )
+
+                st.caption(
+                    "The original images are processed in memory and are not "
+                    "saved. Only the local face gallery template is stored."
+                )
+
+            except Exception as error:
+                st.error(f"Face enrollment failed: {error}")
 
 
 # ============================================================
@@ -1305,7 +1490,7 @@ elif page == "Camera Settings":
     if st.button(
         "Connect Camera",
         type="primary",
-        use_container_width=True
+        width="stretch"
     ):
 
         connect_camera()
@@ -1314,7 +1499,7 @@ elif page == "Camera Settings":
 
     if st.button(
         "Disconnect Camera",
-        use_container_width=True
+        width="stretch"
     ):
 
         disconnect_camera()

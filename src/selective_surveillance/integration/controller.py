@@ -8,6 +8,10 @@ import cv2
 from selective_surveillance.alerting.service import AlertingService
 from selective_surveillance.detection.engine import PersonZoneDetector
 from selective_surveillance.facial_recognition.face_processing import FaceProcessor
+from selective_surveillance.facial_recognition.augmentation import (
+    average_normalized_embeddings,
+    create_face_augmentations,
+)
 from selective_surveillance.facial_recognition.gallery import FaceGallery
 from selective_surveillance.facial_recognition.recognition import FaceRecognitionService
 
@@ -213,18 +217,54 @@ class SurveillanceController:
     # -----------------------------------------
 
     def enroll_person(self, first_name, surname, face_image):
-
-        embedding, _ = self.face_processor.extract(face_image)
-
-        full_name = self.gallery.enroll(
+        """Enroll one consenting person's image, with mild safe augmentations."""
+        result = self.enroll_person_from_images(
             first_name,
             surname,
-            embedding
+            [face_image],
         )
+        return result["name"]
 
+    def enroll_person_from_images(self, first_name, surname, face_images):
+        """Build one template from multiple real captures and mild variations."""
+        if not face_images:
+            raise ValueError("Upload at least one face image.")
+
+        embeddings = []
+        preview_images = []
+
+        # Validate every capture before updating the saved gallery.
+        for image_number, face_image in enumerate(face_images, start=1):
+            embedding, aligned_face = self.face_processor.extract(face_image)
+            embeddings.append(embedding)
+
+            variants = create_face_augmentations(aligned_face)
+            preview_images.extend(
+                (f"Capture {image_number}: {label}", image)
+                for label, image in variants.items()
+            )
+
+            # The original is already encoded by extract(); encode its
+            # brightness, contrast and flip variations with the same model.
+            for label, augmented_image in variants.items():
+                if label == "Original":
+                    continue
+                embeddings.append(
+                    self.face_processor.embedding_from_aligned_face(
+                        augmented_image
+                    )
+                )
+
+        template = average_normalized_embeddings(embeddings)
+        full_name = self.gallery.enroll(first_name, surname, template)
         self.gallery.save(self.gallery_path)
 
-        return full_name
+        return {
+            "name": full_name,
+            "capture_count": len(face_images),
+            "augmentation_count": len(preview_images) - len(face_images),
+            "preview_images": preview_images,
+        }
 
     # -----------------------------------------
     # PROCESS FRAME

@@ -76,7 +76,22 @@ class FaceProcessor:
 
         # Align and encode using the same image and landmark coordinates.
         aligned = self.recognizer.alignCrop(resized, faces[0])
-        vector = self.recognizer.feature(aligned).flatten()
+        vector = self.embedding_from_aligned_face(aligned)
+
+        return vector, aligned
+
+    def embedding_from_aligned_face(self, aligned_face):
+        """Return a normalized SFace embedding from an aligned BGR face."""
+        if (
+            not isinstance(aligned_face, np.ndarray)
+            or aligned_face.size == 0
+            or aligned_face.ndim != 3
+            or aligned_face.shape[2] != 3
+            or aligned_face.dtype != np.uint8
+        ):
+            raise ValueError("Expected a nonempty uint8 BGR aligned face image.")
+
+        vector = self.recognizer.feature(aligned_face).flatten()
 
         length = np.linalg.norm(vector)
 
@@ -87,4 +102,4 @@ class FaceProcessor:
         ):
             raise ValueError("Invalid SFace embedding.")
 
-        return (vector / length).astype(np.float32), aligned
+        return (vector / length).astype(np.float32)

@@ -2,7 +2,7 @@
 
 This is a Python-only, real-time restricted-zone monitoring project. A phone running DroidCam can send its live feed to the laptop; the Streamlit dashboard connects to that camera, shows the live frames, lets the operator draw the restricted area, and presents event notices. The Python pipeline detects and tracks people, checks a face when a person enters the zone, and records the result locally.
 
-The supplied ZIP already includes connected camera, detection, recognition, local database and Streamlit code. Those pieces have now been placed in the project package folders and their imports have been aligned. The project has **not yet been run or evaluated from this cleaned structure**. See [the project audit](docs/PROJECT_AUDIT.md) for what is present and the work still needed.
+The supplied ZIP already includes connected camera, detection, recognition, local database and Streamlit code. Those pieces have now been placed in the project package folders and their imports have been aligned. The cleaned project now installs and initializes on Python 3.13, and its automated checks pass. Real camera scenarios have not yet been measured. See [the project audit](docs/PROJECT_AUDIT.md) for what is present and what still needs field testing.
 
 ## Team folders
 
@@ -31,35 +31,40 @@ The local dashboard does not send Telegram or other external notifications. An u
 
 ## Run locally
 
-Use Python 3.12. From the project root, install the project dependencies:
+Use Python 3.13 (Python 3.11 or 3.12 also meets the declared version range). On Windows, create the environment in the shorter `Documents\Codex` folder so PyTorch does not hit Windows' long-path limit. Run these commands in PowerShell from the project root:
 
 ```powershell
-py -3.12 -m venv .venv
-.\.venv\Scripts\Activate.ps1
+$env:PROJECT_ENV = "$env:USERPROFILE\Documents\Codex\.venvs\surveillance"
+python -m venv $env:PROJECT_ENV
+& "$env:PROJECT_ENV\Scripts\Activate.ps1"
 python -m pip install --upgrade pip
 python -m pip install -e .
 ```
 
+For the scenario notebook and automated checks, install the optional development tools with `python -m pip install -e ".[dev]"` instead.
+
 Put the model files in the ignored local `models/` folder:
 
-- `best.pt` — the person detector weights supplied in the ZIP;
-- `face_detection_yunet_2023mar.onnx` — YuNet face detector;
-- `face_recognition_sface_2021dec.onnx` — SFace embedding model.
+- `best.pt` — copy the person detector weights from the supplied project ZIP;
+- `face_detection_yunet_2023mar.onnx` and `face_recognition_sface_2021dec.onnx` — download and checksum-verify both OpenCV Zoo face models by running `python scripts/download_face_models.py`.
 
-Do not commit model weights or participant data. Then start the dashboard on the laptop:
+The detector weights are not downloaded or committed because their training data and redistribution details were missing from the ZIP. See [the model provenance record](docs/MODEL_PROVENANCE.md). Do not commit model weights or participant data. Then start the dashboard on the laptop:
 
 ```powershell
-python -m streamlit run src/selective_surveillance/dashboard/app.py --server.address 127.0.0.1
+python -m streamlit run src/selective_surveillance/dashboard/app.py --server.address 127.0.0.1 --server.port 8501
 ```
 
-Connect DroidCam using the phone and PC client. In the dashboard, choose the matching webcam index or supported phone stream address, connect the camera, draw and save the restricted zone over its frame, then start monitoring. The region is held for the current Streamlit session and can be downloaded; automatic restoration after restarting the app is still to be implemented. The exact source value depends on the DroidCam setup on that computer. For an offline scenario replay, the dashboard can also use a local video file.
+Connect DroidCam using the phone and PC client. In the dashboard, choose the matching webcam index or supported phone stream address, connect the camera, draw and save the restricted zone over its frame, then start monitoring. The dashboard stores the boundary locally for that camera source and restores it when the same source is selected; the camera address itself is not written into the boundary file. Camera frames are fitted inside the drawing area without stretching. For an offline scenario replay, the dashboard can also use a local video file.
+
+The **Face Enrollment** page accepts at least three separate images of the same consenting person. It previews four mild variations per image and saves one averaged face template to ignored local storage. These generated variations are not independent test samples and are not an anti-spoofing feature. A new gallery profile is kept only on this computer.
 
 ## Project map
 
 ```text
 configs/                         Shared safe defaults and ByteTrack settings
-docs/                            Architecture, roles, audit, interfaces and evaluation plan
+docs/                            Architecture, roles, audit, model provenance and evaluation plan
 notebooks/                       Python-only, cell-by-cell experiments by owner/scenario
+scripts/                         Python model-download and setup helpers
 src/selective_surveillance/
   detection/                     Williams's person and zone module
   facial_recognition/            Emmanuel's YuNet/SFace module
