@@ -33,6 +33,8 @@ logs/
 results/
 output/
 *.log
+presentations/.build/
+.codex-finalizer/
 
 # Editors and operating systems
 .idea/
