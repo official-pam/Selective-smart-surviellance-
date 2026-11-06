@@ -83,7 +83,7 @@ class RecognitionResult:
 
 @dataclass(frozen=True, slots=True)
 class SecurityEvent:
-    """Event record stored before any external alert is attempted."""
+    """Event record stored before a local dashboard alert is displayed."""
 
     event_id: str
     occurred_at: str
@@ -95,7 +95,7 @@ class SecurityEvent:
     person_name: str | None = None
     face_image_path: str | None = None
     frame_image_path: str | None = None
-    alert_status: str = "not_required"
+    alert_status: str = "not_applicable"
 
     def __post_init__(self) -> None:
         if self.event_type is EventType.KNOWN_ENTRY and self.recognition_status is not RecognitionStatus.KNOWN:

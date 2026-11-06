@@ -1,19 +1,11 @@
-[camera]
-source = 0
-width = 1280
-height = 720
-frame_stride = 2
-
 [person_detection]
-model = "models/yolov8n.pt"
-confidence_threshold = 0.35
-tracker = "bytetrack.yaml"
-person_class_id = 0
+model = "models/best.pt"
+confidence_threshold = 0.15
+tracker = "configs/bytetrack.yaml"
 
 [restricted_zone]
-id = "server-room"
-# Example rectangle in normalized x/y points. Replace it using the live camera view.
-polygon = [[0.20, 0.20], [0.80, 0.20], [0.80, 0.90], [0.20, 0.90]]
+# The operator draws this zone in the Streamlit dashboard for the connected camera.
+id = "restricted-zone"
 
 [face_recognition]
 detector_model = "models/face_detection_yunet_2023mar.onnx"
@@ -21,12 +13,9 @@ recognition_model = "models/face_recognition_sface_2021dec.onnx"
 detection_threshold = 0.90
 similarity_threshold = 0.40
 ambiguity_margin = 0.05
-cache_seconds = 3.0
-recheck_seconds = 3.0
 
 [alerting]
-cooldown_seconds = 120
-visible_dashboard_alerts = true
+cooldown_seconds = 60
 
 [storage]
 database_path = "private_data/events.sqlite3"

@@ -48,7 +48,7 @@ SecurityEvent(
     similarity=0.23,
     face_image_path="private evidence path or None",
     frame_image_path="private evidence path or None",
-    alert_status="displayed / acknowledged / not_required",
+    alert_status="dashboard_alert / cooldown / not_applicable",
 )
 ```
 
@@ -58,6 +58,6 @@ Abubakar stores every selected event before it is shown as an alert in the Strea
 
 - Frames and face crops use OpenCV BGR `uint8` arrays while inside Python modules.
 - Bounding boxes are pixel coordinates in the original frame, in `(x1, y1, x2, y2)` order, with the top-left origin.
-- Zone polygons drawn in the Streamlit dashboard use normalised `(x, y)` points between 0 and 1. The detector converts them to pixels for each frame size. The dashboard saves the operator's chosen polygon in ignored local configuration, not in a shared commit.
+- The current dashboard saves drawing data for a 960 × 540 canvas; the live loop resizes each processed frame to that same size before using pixel coordinates. Preserve this match when modifying frame handling. The target improvement is to preserve camera aspect ratio and store normalized `(x, y)` polygon points, then convert them to frame pixels once per frame size. Do not commit a real facility's zone coordinates.
 - All persisted event times use UTC ISO-8601 timestamps.
 - A missing face crop is `None`; it is not an empty fake image.

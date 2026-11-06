@@ -16,11 +16,17 @@ from .config import (
 class FaceProcessor:
     """Load models once and process one face per input image."""
 
-    def __init__(self, models_dir):
+    def __init__(
+        self,
+        models_dir,
+        detector_model=DETECTOR_MODEL,
+        recognition_model=RECOGNITION_MODEL,
+        detection_threshold=DETECTION_THRESHOLD,
+    ):
         models_dir = Path(models_dir)
 
-        detector_path = models_dir / DETECTOR_MODEL
-        recognition_path = models_dir / RECOGNITION_MODEL
+        detector_path = models_dir / detector_model
+        recognition_path = models_dir / recognition_model
 
         # Fail clearly if either pretrained model is missing.
         for path in (detector_path, recognition_path):
@@ -29,7 +35,7 @@ class FaceProcessor:
 
         self.detector = cv2.FaceDetectorYN.create(
             str(detector_path), "", (320, 320),
-            score_threshold=DETECTION_THRESHOLD,
+            score_threshold=detection_threshold,
             nms_threshold=NMS_THRESHOLD
         )
 

@@ -1,55 +1,57 @@
 # System architecture
 
-## Intended end-to-end flow
+## Real-time flow
 
 ```text
-Phone camera running DroidCam
-        |  Wi-Fi (or supported USB connection)
+Phone running DroidCam
+        |  Wi-Fi or USB to DroidCam PC client / supported stream
         v
-DroidCam PC client / webcam source on laptop
+OpenCV camera reader on the laptop
         |
-        +---------------------> Streamlit live dashboard
-        |                         | draw / save / edit / reset zone polygon
-        |                         | show live feed, status, recent events/alerts
+        +------------------------------> Streamlit dashboard
+        |                                  | live camera preview
+        |                                  | draw and save restricted boundary
+        |                                  | camera status, events and notices
         v
-Python camera reader -> YOLO person detection -> ByteTrack tracking IDs
+YOLO person detection -> ByteTrack track IDs
         |
         v
-Restricted-zone membership + entry/exit transition
-        | outside zone                         | newly entered zone
+Check the person's foot point against the saved region
+        | outside / no boundary crossing       | zone-entry transition
         v                                      v
-Continue monitoring, no intruder alert    Crop face -> YuNet -> SFace
-                                               | per-track cache
-                                               v
-                                     Known / Unknown / Uncertain / Face unclear
-                                               |
-                                               v
-                                     Save event and necessary evidence locally
-                                               |
-                                               v
-                                     Immediate visible Streamlit alert
-                                     for unknown / uncertain / unclear entry
+Keep monitoring                          Person crop -> YuNet face detection
+                                                -> SFace embedding + gallery match
+                                                -> Known / Unknown / Uncertain
+                                                |  or face unclear / error
+                                                v
+                                         Save local event in SQLite
+                                                |
+                                                v
+                                         Show an on-screen dashboard notice
 ```
 
-The application is a local, Python-only system. Streamlit is the operator interface; it controls and presents the pipeline but does not replace the camera or recognition models. The real-time mode reads a live camera source; uploaded video is reserved for repeatable, offline evaluation. DroidCam's documented PC connection methods are Wi-Fi and USB, so the project must not assume Bluetooth input. The actual webcam source and device index depend on the laptop setup. See the [DroidCam connection guide](https://www.dev47apps.com/droidcam/connect/).
+The system code is Python. Streamlit is the operator dashboard, not a model. There is no Telegram or external messaging service. Unknown means that the enrolled gallery did not produce an accepted match; it does not prove that a person is a threat. Errors and unclear faces should be reported as verification problems, separately from identity decisions. DroidCam documents Wi-Fi and USB PC connections; Bluetooth is not an assumed connection method. See the [DroidCam connection guide](https://www.dev47apps.com/droidcam/connect/).
 
-## Module boundaries
+## Modules and responsibilities
 
-1. **Camera input** reads live frames from the laptop's DroidCam webcam source or a configured stream address. It supplies timestamps and frame sequence numbers, but does not decide identity or alert policy.
-2. **Dashboard and zone setup** previews the live camera, lets an authorised operator draw/edit/save/reset the restricted polygon, and displays camera/model status, people, events and visible alerts. Polygon points are normalized so they scale with frame resolution.
-3. **Detection and tracking** returns a persistent `track_id`, bounding box, confidence and inside/outside state. It reports zone transitions; it does not decide identity.
-4. **Face recognition** checks an entrant's face crop and returns Known, Unknown, Uncertain, Face unclear or Error. A name is returned only for an accepted Known match.
-5. **Integration and selection** applies zone-entry policy, connects recognition to its tracking ID, uses short-lived cache entries only for active tracks, and prevents repeated alerts for the same continuing entry.
-6. **Local storage and dashboard alerting** save an event and the minimum necessary evidence, then raise an immediate visible Streamlit alert for an unknown, uncertain or face-unclear entry. No Telegram bot, external alert service or R code is part of the architecture.
+1. **Camera and dashboard — Ugochukwu:** connect to the selected webcam/stream/video, show the live view, and let the operator define a region on that camera view.
+2. **Person detection and zone transitions — Williams:** detect people, track them across frames, and report when each track enters or exits the polygon.
+3. **Face enrolment and recognition — Emmanuel:** create reference embeddings and compare an entrant crop against the enrolled gallery. A match score is cosine similarity, not a probability.
+4. **Event storage and alert policy — Abubakar:** save an event and any approved evidence locally, manage retention/cooldown, and make dashboard notices available.
+5. **Integration — Josiah:** pass camera frames and zone geometry through the modules, keep track IDs attached to the right observations, and produce one consistent event record.
+6. **Scenario evaluation — Joseph:** evaluate accuracy, speed, error cases and attack scenarios using a held-out protocol; record results rather than claims.
 
-## Timing and cache behaviour
+## What the supplied code currently does
 
-Do not run face detection on every video frame. `integration/recognition_cache.py` provides a starting point to cache an accepted or unknown result by persistent track ID for a short configured interval, then recheck. Do not cache `Uncertain`, `Face unclear` or `Error` as a final identity. Clear cache entries when a track ends, and force recheck after a long gap, tracker reset, or significant change in face quality. Record cache hits and fresh checks so speed measurements are explainable.
+The current controller reads a frame, resizes it to 960 by 540, runs person tracking and checks the selected zone. When a track enters, it attempts face recognition once on that frame and stores an event. Unknown matches can create a local dashboard alert; Known entries are informational; inconclusive results are logged and shown as needing review. The dashboard also supports replaying a local video for repeatable scenario evaluation.
 
-## Failure handling
+The repository contains a short-lived recognition-cache helper, but the controller does not yet use it. It also does not retry unclear faces on later frames. The fixed-size resize may distort the image and lower face detail. These are planned improvements, not current capabilities.
 
-- Camera read failure: show an offline/reconnecting state in the dashboard and stop or reconnect according to an explicit setting.
-- Person without a usable face: preserve the track/zone entry and emit `Face unclear`.
-- Recognition exception/model unavailable: report an operational error; never convert an exception into a confident Unknown decision.
-- Database error: show a visible error and do not claim the event was recorded.
-- Dashboard alert: display and store the alert locally, and apply a cooldown to avoid flooding while someone remains in the zone.
+## Timing, privacy and failure behaviour
+
+- The dashboard requests a frame update about every 0.2 seconds. That is a target update interval, not evidence of system FPS. Measure actual frames per second and entry-to-notice delay on the test laptop.
+- Keep face galleries, event databases and evidence images in ignored `private_data/`. Do not store evidence unless needed for the agreed evaluation and consent.
+- A missing face is not an Unknown match. A model exception is an operational error, not an identity result.
+- If the camera disconnects, show the disconnected state and avoid creating an entry from a failed frame.
+- The dashboard should distinguish Known entry, identity-not-matched notice, needs-review notice, and system error.
+- There is no anti-spoofing or liveness detector in the supplied model pipeline. Report acceptance of printed-photo, screen and replay attacks as a vulnerability metric unless a liveness method is added and evaluated.
