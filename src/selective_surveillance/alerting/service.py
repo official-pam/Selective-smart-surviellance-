@@ -23,6 +23,9 @@ class AlertingService:
     def record_event(self, **event_data):
         return self._events.record_event(**event_data)
 
+    def update_event_identity(self, **event_data):
+        return self._events.update_event_identity(**event_data)
+
     def list_events(self, limit=100):
         return self._events.list_events(limit)
 

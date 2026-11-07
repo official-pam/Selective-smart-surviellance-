@@ -68,6 +68,7 @@ def initialise_state():
         "active_video_path": None,
         "page": "Dashboard",
         "last_event_ids": set(),
+        "show_live_preview": True,
     }
 
     for key, value in defaults.items():
@@ -168,8 +169,30 @@ def frame_to_display(frame):
     if frame is None:
         return make_placeholder_frame()
 
+    display_frame = frame
+    # Lift shadow detail for viewing only. Recognition still receives the
+    # camera pixels through the backend's separate face-processing path.
+    luminance = cv2.cvtColor(frame, cv2.COLOR_BGR2YCrCb)[:, :, 0]
+    if float(np.mean(luminance)) < 100:
+        ycrcb = cv2.cvtColor(frame, cv2.COLOR_BGR2YCrCb)
+        ycrcb[:, :, 0] = cv2.createCLAHE(
+            clipLimit=2.0, tileGridSize=(8, 8)
+        ).apply(ycrcb[:, :, 0])
+        display_frame = cv2.cvtColor(ycrcb, cv2.COLOR_YCrCb2BGR)
+
+    # Sending fewer pixels to the browser makes the live panel lighter while
+    # the detector continues processing the full working frame.
+    display_height, display_width = display_frame.shape[:2]
+    if display_width > 800:
+        ratio = 800 / display_width
+        display_frame = cv2.resize(
+            display_frame,
+            (800, max(1, int(display_height * ratio))),
+            interpolation=cv2.INTER_AREA,
+        )
+
     rgb = cv2.cvtColor(
-        frame,
+        display_frame,
         cv2.COLOR_BGR2RGB
     )
 
@@ -579,6 +602,13 @@ def monitoring_loop():
 
     controller = get_controller()
 
+    if not controller.gallery.references():
+        st.warning(
+            "No face profiles are enrolled yet. Zone tracking will work, but "
+            "the system cannot identify registered people until you add faces "
+            "on the Face Enrollment page."
+        )
+
     frame = controller.read_camera_frame()
 
     if frame is None:
@@ -609,29 +639,49 @@ def monitoring_loop():
 
     frame = resize_frame_to_canvas(frame)
 
+    process_started = time.perf_counter()
     annotated_frame, new_events = controller.process_frame(frame)
+    process_ms = (time.perf_counter() - process_started) * 1000
 
     st.session_state.camera_frame = annotated_frame
 
-    st.image(
-        frame_to_display(annotated_frame),
-        caption="Live surveillance feed",
-        width="stretch"
+    if st.session_state.show_live_preview:
+        st.image(
+            frame_to_display(annotated_frame),
+            caption="Live surveillance feed · shadow detail enhanced for viewing",
+            width="stretch"
+        )
+    else:
+        st.caption("Live preview is minimized. Camera monitoring and face checks are still running.")
+    st.caption(
+        f"Per-frame processing: {process_ms:.0f} ms · "
+        f"equivalent throughput: {1000 / max(process_ms, 1):.1f} frames/s"
     )
 
     if new_events:
         for event in new_events:
-            if event["event"] != "zone_entry":
-                continue
-
             identity = event.get("identity", {})
             status = identity.get("status", "Uncertain")
             message = (
                 f"Track ID: {event['track_id']} | "
-                f"Recognition: {status}"
+                f"Face check: {status}"
             )
+            if identity.get("candidate") and identity.get("similarity") is not None:
+                message += (
+                    f" | closest candidate: {identity['candidate']} "
+                    f"({identity['similarity']:.3f}; "
+                    f"decision threshold {identity.get('threshold', 0):.2f})"
+                )
 
-            if status == "Unknown":
+            if event["event"] == "face_update" and status == "Known":
+                st.success(f"Registered face recognized: {identity.get('name')}. {message}")
+            elif event["event"] == "face_update" and event.get("face_final"):
+                st.warning(f"Face check finished: {identity.get('reason', status)}. {message}")
+            elif event["event"] == "face_update":
+                st.info(f"Checking face — attempt {event.get('face_attempts', 0)} of {controller.max_face_attempts}. {message}")
+            elif event["event"] != "zone_entry":
+                continue
+            elif status == "Unknown":
                 alert_status = event.get("storage", {}).get("alert_status")
                 if alert_status == "dashboard_alert":
                     st.error(f"Identity not matched inside the restricted zone. {message}")
@@ -1009,6 +1059,12 @@ elif page == "Live Monitoring":
 
     st.markdown("### Camera Preview")
 
+    st.toggle(
+        "Show live preview",
+        key="show_live_preview",
+        help="Hide the video panel to reduce browser load; monitoring and face checks continue.",
+    )
+
     if st.session_state.camera_connected:
 
         if st.session_state.monitoring:
@@ -1314,6 +1370,7 @@ elif page == "Face Enrollment":
                     f"{enrollment['capture_count']} real captures and "
                     f"{enrollment['augmentation_count']} generated variations."
                 )
+                st.session_state.enrollment_success_name = enrollment["name"]
 
                 st.markdown("### Augmentation preview")
                 preview_columns = st.columns(5)
@@ -1334,6 +1391,15 @@ elif page == "Face Enrollment":
 
             except Exception as error:
                 st.error(f"Face enrollment failed: {error}")
+
+    if st.session_state.get("enrollment_success_name"):
+        st.success(
+            f"{st.session_state.enrollment_success_name} is saved in the local face gallery."
+        )
+        if st.button("Return to Dashboard", type="primary"):
+            st.session_state.page = "Dashboard"
+            st.session_state.enrollment_success_name = None
+            st.rerun()
 
 
 # ============================================================

@@ -37,12 +37,14 @@ class PersonZoneDetector:
         self.previous_zone_state = {}
         self.frame_number = 0
         self.latest_person_crops = {}
+        self.latest_tracks = {}
 
     def reset(self):
 
         self.previous_zone_state.clear()
         self.frame_number = 0
         self.latest_person_crops.clear()
+        self.latest_tracks.clear()
 
         predictor = getattr(self.model, "predictor", None)
         trackers = getattr(predictor, "trackers", [])
@@ -83,6 +85,7 @@ class PersonZoneDetector:
         events = []
 
         self.latest_person_crops = {}
+        self.latest_tracks = {}
 
         cv2.polylines(
             annotated,
@@ -139,6 +142,11 @@ class PersonZoneDetector:
                         False
                     ) >= 0
                 )
+
+                self.latest_tracks[int(track_id)] = {
+                    "box": (x1, y1, x2, y2),
+                    "inside_zone": inside_zone,
+                }
 
                 previous_state = self.previous_zone_state.get(track_id)
 

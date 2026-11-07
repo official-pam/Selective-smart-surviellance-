@@ -142,6 +142,49 @@ class EventStore:
             'full_frame_path': frame_path,
         }
 
+    def update_event_identity(self, event_id, known, similarity, face_status,
+                              face_image=None):
+        """Update a zone event after a later frame yields a clearer face."""
+        recognition = {True: 'known', False: 'unknown'}.get(known, 'inconclusive')
+        face_path = self._save_image(event_id, 'face', face_image)
+        db = self._connect()
+
+        try:
+            row = db.execute(
+                'SELECT * FROM events WHERE id = ?', (event_id,)
+            ).fetchone()
+            if row is None:
+                raise StorageError(f'could not find event to update: {event_id}')
+
+            alert_status = row['alert_status']
+            if recognition == 'unknown' and row['recognition'] != 'unknown':
+                alert_status = self._claim_alert(
+                    db,
+                    row['zone'],
+                    row['track_id'],
+                    parse_time(row['occurred_at']),
+                )
+
+            db.execute(
+                'UPDATE events SET recognition = ?, similarity = ?, '
+                'face_status = ?, face_image_path = COALESCE(?, face_image_path), '
+                'alert_status = ? WHERE id = ?',
+                (recognition, similarity, face_status, face_path, alert_status, event_id),
+            )
+            db.commit()
+        except sqlite3.Error as e:
+            db.rollback()
+            raise StorageError(f'could not update event: {e}')
+        finally:
+            db.close()
+
+        return {
+            'event_id': event_id,
+            'alert_status': alert_status,
+            'face_image_path': face_path or row['face_image_path'],
+            'full_frame_path': row['full_frame_path'],
+        }
+
     def _claim_alert(self, db, zone, track_id, event_time):
         if track_id is None:
             return 'dashboard_alert'

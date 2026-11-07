@@ -1,6 +1,6 @@
 # Selective Smart Surveillance System
 
-This is a Python-only, real-time restricted-zone monitoring project. A phone running DroidCam can send its live feed to the laptop; the Streamlit dashboard connects to that camera, shows the live frames, lets the operator draw the restricted area, and presents event notices. The Python pipeline detects and tracks people, checks a face when a person enters the zone, and records the result locally.
+This is a Python-only, real-time restricted-zone monitoring project. A phone running DroidCam can send its live feed to the laptop; the Streamlit dashboard connects to that camera, shows the live frames, lets the operator draw the restricted area, and presents event notices. The Python pipeline detects and tracks people, retries face checks over successive frames while a person is inside the zone, and records one local event per entry. The live preview can be hidden while monitoring continues.
 
 The supplied ZIP already includes connected camera, detection, recognition, local database and Streamlit code. Those pieces have now been placed in the project package folders and their imports have been aligned. The cleaned project now installs and initializes on Python 3.13, and its automated checks pass. Real camera scenarios have not yet been measured. See [the project audit](docs/PROJECT_AUDIT.md) for what is present and what still needs field testing.
 
@@ -56,7 +56,7 @@ python -m streamlit run src/selective_surveillance/dashboard/app.py --server.add
 
 Connect DroidCam using the phone and PC client. In the dashboard, choose the matching webcam index or supported phone stream address, connect the camera, draw and save the restricted zone over its frame, then start monitoring. The dashboard stores the boundary locally for that camera source and restores it when the same source is selected; the camera address itself is not written into the boundary file. Camera frames are fitted inside the drawing area without stretching. For an offline scenario replay, the dashboard can also use a local video file.
 
-The **Face Enrollment** page accepts at least three separate images of the same consenting person. It previews four mild variations per image and saves one averaged face template to ignored local storage. These generated variations are not independent test samples and are not an anti-spoofing feature. A new gallery profile is kept only on this computer.
+The **Face Enrollment** page accepts at least three separate images of the same consenting person. It previews four mild variations per image and saves one averaged face template to ignored local storage. These generated variations are not independent test samples and are not an anti-spoofing feature. A new gallery profile is kept only on this computer. Shadow detail is enhanced for face detection and dashboard viewing, but the camera still needs enough visible or infrared light to capture identity details; low-light performance must be measured on the actual camera.
 
 ## Project map
 

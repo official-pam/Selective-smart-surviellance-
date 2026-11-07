@@ -2,7 +2,7 @@
 
 **Owner: Emmanuel John.** This folder contains the supplied Python face-recognition module: YuNet detects and aligns faces, SFace creates normalized embeddings, the gallery stores enrolled references, and the matcher returns Known, Unknown or Uncertain.
 
-The live controller in `integration/controller.py` calls this module when a tracked person enters the restricted zone. The controller currently checks the entry frame once; later-frame retries for unclear faces and the existing track cache are still to be integrated.
+The live controller in `integration/controller.py` calls this module for tracked people inside the restricted zone. It retries on later frames when a face is unclear, uses the cached track crop, and stops after a known match, zone exit, or the configured attempt limit. Face detection receives shadow-enhanced pixels in low light; SFace still uses the original pixels so enrollment and recognition share the same embedding pipeline. This does not provide liveness or anti-spoofing.
 
 ## Model files
 

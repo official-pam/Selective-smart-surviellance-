@@ -43,6 +43,18 @@ class FaceProcessor:
             str(recognition_path), ""
         )
 
+    @staticmethod
+    def _improve_dark_detection_image(image_bgr):
+        """Lift shadow detail for YuNet only, without changing SFace pixels."""
+        luminance = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2YCrCb)[:, :, 0]
+        if float(np.mean(luminance)) >= 100:
+            return image_bgr
+
+        ycrcb = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2YCrCb)
+        clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+        ycrcb[:, :, 0] = clahe.apply(ycrcb[:, :, 0])
+        return cv2.cvtColor(ycrcb, cv2.COLOR_YCrCb2BGR)
+
     def extract(self, image_bgr):
         """Return a normalized embedding and the aligned BGR face."""
 
@@ -65,10 +77,15 @@ class FaceProcessor:
             (max(1, round(width * scale)), max(1, round(height * scale)))
         )
 
+        # YuNet may miss faces in shadow, so improve only its detection input.
+        # SFace alignment and embeddings still use the original pixels, keeping
+        # enrollment and recognition on the same appearance pipeline.
+        detection_image = self._improve_dark_detection_image(resized)
+
         # Detect faces using the resized image's dimensions.
         h, w = resized.shape[:2]
         self.detector.setInputSize((w, h))
-        _, faces = self.detector.detect(resized)
+        _, faces = self.detector.detect(detection_image)
 
         # Avoid choosing an identity from an ambiguous multi-face image.
         if faces is None or len(faces) != 1:

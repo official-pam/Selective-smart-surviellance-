@@ -28,15 +28,27 @@ class FaceRecognitionService:
 
     def recognize(self, image_bgr):
         """Return a structured identity decision for one face."""
-
         references = self.gallery.references()
 
         if not references:
             raise ValueError("Enroll at least one person first.")
 
-        # Use the same preprocessing as enrollment.
         # Invalid or multiple-face inputs raise ValueError.
         query, _ = self.processor.extract(image_bgr)
+        return self.recognize_embedding(query, references=references)
+
+    def recognize_embedding(self, query, references=None):
+        """Compare an already-extracted embedding without detecting twice."""
+        references = references or self.gallery.references()
+
+        if not references:
+            raise ValueError("Enroll at least one person first.")
+
+        query = np.asarray(query, dtype=np.float32).reshape(-1)
+        length = float(np.linalg.norm(query))
+        if query.shape != (128,) or not np.isfinite(query).all() or length == 0:
+            raise ValueError("Expected a valid 128-value face embedding.")
+        query = query / length
 
         # Calculate cosine similarity against every reference.
         scores = {

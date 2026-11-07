@@ -11,7 +11,7 @@ RECOGNITION_MODEL = "face_recognition_sface_2021dec.onnx"
 MAX_IMAGE_SIDE = 640
 
 # Filter face detections; this is NOT an identity-matching threshold.
-DETECTION_THRESHOLD = 0.90
+DETECTION_THRESHOLD = 0.70
 NMS_THRESHOLD = 0.30
 
 # Provisional identity-decision settings, requiring validation.

@@ -10,7 +10,7 @@ id = "restricted-zone"
 [face_recognition]
 detector_model = "models/face_detection_yunet_2023mar.onnx"
 recognition_model = "models/face_recognition_sface_2021dec.onnx"
-detection_threshold = 0.90
+detection_threshold = 0.70
 similarity_threshold = 0.40
 ambiguity_margin = 0.05
 

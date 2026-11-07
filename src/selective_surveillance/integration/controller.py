@@ -30,6 +30,9 @@ class SurveillanceController:
         self.camera_fps = 30.0
         self.camera_connected = False
         self.monitoring = False
+        self.face_checks = {}
+        self.face_check_interval = 3
+        self.max_face_attempts = 12
 
         # -----------------------------------------
         # DETECTION
@@ -185,6 +188,7 @@ class SurveillanceController:
             raise RuntimeError("Save a restricted region before monitoring.")
 
         self.detector.reset()
+        self.face_checks.clear()
         self.monitoring = True
 
     # -----------------------------------------
@@ -285,98 +289,161 @@ class SurveillanceController:
         )
 
         processed_events = []
+        events_by_track = {event["track_id"]: event for event in detection_events}
 
-        for detection_event in detection_events:
-
-            event = dict(detection_event)
-
-            if event["event"] != "zone_entry":
-                processed_events.append(event)
+        # Create one event record as soon as someone enters. Face matching can
+        # then retry on later frames without making duplicate zone events.
+        for track_id, event in events_by_track.items():
+            if event["event"] == "zone_exit":
+                state = self.face_checks.pop(track_id, None)
+                exit_event = dict(event)
+                if state and not state["finalized"]:
+                    identity = state["identity"]
+                    known = True if identity.get("status") == "Known" else (
+                        False if identity.get("status") == "Unknown" else None
+                    )
+                    state["storage"] = self.alerting.update_event_identity(
+                        event_id=state["event_id"],
+                        known=known,
+                        similarity=identity.get("similarity"),
+                        face_status=state["face_status"],
+                        face_image=state["face_image"],
+                    )
+                    exit_event["identity"] = identity
+                processed_events.append(exit_event)
                 continue
 
-            track_id = event["track_id"]
-
-            person_crop = self.detector.latest_person_crops.get(track_id)
-
             identity = {
-                "status": "Uncertain",
+                "status": "Checking",
                 "name": None,
                 "candidate": None,
                 "similarity": None,
-                "reason": "Face recognition was not completed."
+                "reason": "Looking for a clear face while the person is inside the zone.",
             }
-
-            face_image_bytes = None
-            face_status = "not_captured"
-
-            # -------------------------------------
-            # FACE CAPTURE AND RECOGNITION
-            # -------------------------------------
-
-            if person_crop is not None:
-
-                try:
-
-                    _, aligned_face = self.face_processor.extract(person_crop)
-
-                    face_image_bytes = self.encode_image(aligned_face)
-
-                    face_status = "captured"
-
-                    if self.gallery.references():
-
-                        identity = self.recognition.recognize(person_crop)
-
-                    else:
-
-                        identity["reason"] = (
-                            "No registered identities in the gallery."
-                        )
-
-                except ValueError as error:
-
-                    face_status = "face_not_detected"
-                    identity["reason"] = str(error)
-
-                except Exception as error:
-
-                    face_status = "processing_error"
-                    identity["reason"] = str(error)
-
-            # -------------------------------------
-            # RECOGNITION STATUS
-            # -------------------------------------
-
-            if identity["status"] == "Known":
-                known = True
-
-            elif identity["status"] == "Unknown":
-                known = False
-
-            else:
-                known = None
-
-            # -------------------------------------
-            # STORE EVENT
-            # -------------------------------------
-
-            full_frame_bytes = self.encode_image(frame)
-
-            storage_result = self.alerting.record_event(
-                known=known,
-                similarity=identity.get("similarity"),
+            storage = self.alerting.record_event(
+                known=None,
+                similarity=None,
                 zone=event["zone_id"],
                 track_id=track_id,
                 occurred_at=event["recorded_at"],
-                face_status=face_status,
-                face_image=face_image_bytes,
-                full_frame=full_frame_bytes
+                face_status="pending",
+                full_frame=self.encode_image(frame),
             )
+            self.face_checks[track_id] = {
+                "event_id": storage["event_id"],
+                "zone_id": event["zone_id"],
+                "occurred_at": event["recorded_at"],
+                "attempts": 0,
+                "last_attempt_frame": -self.face_check_interval,
+                "identity": identity,
+                "face_status": "pending",
+                "face_image": None,
+                "finalized": False,
+                "storage": storage,
+            }
+            entry = dict(event)
+            entry.update(identity=identity, storage=storage, face_attempts=0)
+            processed_events.append(entry)
 
-            event["identity"] = identity
-            event["storage"] = storage_result
+        # Run face detection only for tracked people currently inside the
+        # restricted region. Retry over successive frames because a single
+        # entry frame often has a turned, small, or shadowed face.
+        for track_id, track in self.detector.latest_tracks.items():
+            state = self.face_checks.get(track_id)
+            if not track["inside_zone"] or state is None or state["finalized"]:
+                continue
 
-            processed_events.append(event)
+            frame_number = self.detector.frame_number
+            if frame_number - state["last_attempt_frame"] < self.face_check_interval:
+                continue
+
+            state["last_attempt_frame"] = frame_number
+            state["attempts"] += 1
+            person_crop = self.detector.latest_person_crops.get(track_id)
+            identity = {
+                "status": "Uncertain", "name": None, "candidate": None,
+                "similarity": None, "reason": "No face crop was available.",
+            }
+            face_status = "face_not_detected"
+            face_image_bytes = None
+
+            if person_crop is not None:
+                try:
+                    embedding, aligned_face = self.face_processor.extract(person_crop)
+                    face_image_bytes = self.encode_image(aligned_face)
+                    face_status = "captured"
+                    if self.gallery.references():
+                        identity = self.recognition.recognize_embedding(embedding)
+                    else:
+                        identity["reason"] = "No registered identities in the gallery."
+                except ValueError as error:
+                    identity["reason"] = str(error)
+                except Exception as error:
+                    face_status = "processing_error"
+                    identity["reason"] = str(error)
+
+            # Keep the clearest/highest-scoring observation for this track.
+            previous = state["identity"]
+            score = identity.get("similarity")
+            previous_score = previous.get("similarity")
+            if score is not None and (previous_score is None or score > previous_score):
+                state["identity"] = identity
+                state["face_image"] = face_image_bytes
+                state["face_status"] = face_status
+            elif identity["status"] == "Known":
+                state["identity"] = identity
+                state["face_image"] = face_image_bytes
+                state["face_status"] = face_status
+            elif previous.get("status") == "Checking":
+                state["identity"] = identity
+                state["face_image"] = face_image_bytes
+                state["face_status"] = face_status
+
+            identity = state["identity"]
+            # A clear known or clear no-match is decisive immediately. Retry
+            # unclear/no-face frames, then finish as inconclusive at the limit.
+            final = identity.get("status") in {"Known", "Unknown"} or (
+                state["attempts"] >= self.max_face_attempts
+            )
+            if final:
+                known = True if identity["status"] == "Known" else (
+                    False if identity["status"] == "Unknown" else None
+                )
+                state["storage"] = self.alerting.update_event_identity(
+                    event_id=state["event_id"],
+                    known=known,
+                    similarity=identity.get("similarity"),
+                    face_status=state["face_status"],
+                    face_image=state["face_image"],
+                )
+                state["finalized"] = True
+
+            update = {
+                "event": "face_update",
+                "track_id": track_id,
+                "zone_id": state["zone_id"],
+                "identity": identity,
+                "storage": state["storage"],
+                "face_attempts": state["attempts"],
+                "face_final": state["finalized"],
+                "recorded_at": state["occurred_at"],
+            }
+            processed_events.append(update)
+
+        # Add a clear face-check label to the tracked person, so zone presence
+        # and identity checking are visibly separate steps.
+        for track_id, track in self.detector.latest_tracks.items():
+            x1, y1, _, _ = track["box"]
+            state = self.face_checks.get(track_id)
+            if track["inside_zone"] and state:
+                label = state["identity"]["status"].upper()
+                if not state["finalized"] and label != "KNOWN":
+                    label = f"CHECKING FACE {state['attempts']}/{self.max_face_attempts}"
+                color = (0, 220, 255) if not state["finalized"] else (80, 220, 80)
+                cv2.putText(
+                    annotated_frame, f"FACE: {label}", (x1, max(y1 - 32, 20)),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, color, 2,
+                )
 
         return annotated_frame, processed_events
 
@@ -387,6 +454,7 @@ class SurveillanceController:
     def reset(self):
 
         self.detector.reset()
+        self.face_checks.clear()
 
     # -----------------------------------------
     # RETRIEVE EVENTS
