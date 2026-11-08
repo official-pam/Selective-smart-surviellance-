@@ -15,7 +15,7 @@ The controller loads both files from `models/`. Do not commit model files or enr
 
 ## Enrollment and matching
 
-`FaceGallery` currently stores one normalized 128-value reference embedding for each full name. It prevents duplicate names, saves the gallery as JSON, and checks model/pipeline identifiers when loading. The gallery belongs under `private_data/face_gallery.json`.
+`FaceGallery` currently stores one normalized 128-value reference embedding for each full name. It prevents duplicate names, saves the gallery as JSON, and checks model/pipeline identifiers when loading. The gallery is saved as `face_gallery.json` in the local application-data directory returned by `storage/paths.py`.
 
 The current gallery is not yet a multi-image profile and does not perform a documented augmentation sequence. Before extending enrollment, compare multiple consenting captures under normal and difficult conditions. If synthetic augmentation is tried, keep those samples grouped with the original person and do not count them as independent test participants.
 

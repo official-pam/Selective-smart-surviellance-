@@ -14,6 +14,7 @@ from selective_surveillance.facial_recognition.augmentation import (
 )
 from selective_surveillance.facial_recognition.gallery import FaceGallery
 from selective_surveillance.facial_recognition.recognition import FaceRecognitionService
+from selective_surveillance.storage.paths import get_private_data_directory
 
 
 class SurveillanceController:
@@ -21,6 +22,7 @@ class SurveillanceController:
     def __init__(self, project_root, zone_points=None):
 
         self.project_root = Path(project_root)
+        self.private_data_directory = get_private_data_directory(self.project_root)
         self.zone_points = zone_points or []
         settings_path = self.project_root / "configs" / "default.toml"
         with settings_path.open("rb") as settings_file:
@@ -59,11 +61,7 @@ class SurveillanceController:
             detection_threshold=float(face_settings["detection_threshold"]),
         )
 
-        self.gallery_path = (
-            self.project_root
-            / "private_data"
-            / "face_gallery.json"
-        )
+        self.gallery_path = self.private_data_directory / "face_gallery.json"
 
         if self.gallery_path.exists():
             self.gallery = FaceGallery.load(self.gallery_path)
@@ -82,8 +80,16 @@ class SurveillanceController:
         # -----------------------------------------
 
         storage_settings = self.settings["storage"]
-        database_path = self.project_root / storage_settings["database_path"]
-        evidence_directory = self.project_root / storage_settings["evidence_directory"]
+        # Keep private records outside the checkout. This also avoids permission
+        # errors when a cloned project folder is read-only or protected by Windows.
+        database_path = (
+            self.private_data_directory
+            / Path(storage_settings["database_path"]).name
+        )
+        evidence_directory = (
+            self.private_data_directory
+            / Path(storage_settings["evidence_directory"]).name
+        )
 
         self.alerting = AlertingService(
             database_path=str(database_path),

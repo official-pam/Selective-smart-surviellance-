@@ -16,6 +16,7 @@ from PIL import Image, ImageDraw, ImageFont, ImageOps
 from streamlit_drawable_canvas import st_canvas
 
 from selective_surveillance.integration.controller import SurveillanceController
+from selective_surveillance.storage.paths import get_private_data_directory
 from selective_surveillance.dashboard.zone_config import (
     clear_zone,
     load_zone,
@@ -33,7 +34,7 @@ CANVAS_WIDTH = 960
 CANVAS_HEIGHT = 540
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
-ZONE_CONFIG_PATH = PROJECT_ROOT / "configs" / "zone.local.json"
+ZONE_CONFIG_PATH = get_private_data_directory(PROJECT_ROOT) / "zone.local.json"
 
 st.set_page_config(
     page_title=APP_TITLE,
@@ -548,6 +549,23 @@ def disconnect_camera():
         st.session_state.active_video_path = None
 
 
+def load_video_source(video_path, delete_after_use=False):
+    """Connect the controller to an uploaded or local video file."""
+    video_path = Path(video_path).expanduser()
+    if not video_path.is_file():
+        raise FileNotFoundError(f"I could not find this video file: {video_path}")
+
+    if st.session_state.camera_connected:
+        disconnect_camera()
+
+    st.session_state.video_source_active = True
+    st.session_state.stream_address = str(video_path)
+    st.session_state.active_video_path = (
+        str(video_path) if delete_after_use else None
+    )
+    connect_camera()
+
+
 # ============================================================
 # MONITORING CONTROLS
 # ============================================================
@@ -1000,6 +1018,25 @@ elif page == "Live Monitoring":
         key="cctv_video_uploader"
     )
 
+    local_video_path = st.text_input(
+        "Or enter a video file path on this computer",
+        placeholder=r"C:\Users\HP\Videos\security_test.mp4",
+        help="Use this if you already know where the video is saved. This works with files on the computer running this app.",
+        key="local_video_path",
+    )
+
+    if st.button(
+        "Load Video From Path",
+        width="stretch",
+        disabled=st.session_state.monitoring or not local_video_path.strip(),
+    ):
+        try:
+            load_video_source(local_video_path)
+            if st.session_state.camera_connected:
+                st.success("Video opened. Set the restricted region, then start monitoring.")
+        except Exception as error:
+            st.error(f"Unable to open video: {error}")
+
     if uploaded_video is not None:
 
         st.caption(
@@ -1033,14 +1070,7 @@ elif page == "Live Monitoring":
 
                 video_path.write_bytes(video_bytes)
 
-                # Mark this source as an uploaded video.
-                st.session_state.video_source_active = True
-
-                # Pass the video path to the existing controller.
-                st.session_state.stream_address = str(video_path)
-                st.session_state.active_video_path = str(video_path)
-
-                connect_camera()
+                load_video_source(video_path, delete_after_use=True)
 
                 if st.session_state.camera_connected:
 
