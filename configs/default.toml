@@ -1,0 +1,23 @@
+[person_detection]
+model = "models/best.pt"
+confidence_threshold = 0.15
+tracker = "configs/bytetrack.yaml"
+
+[restricted_zone]
+# The operator draws this zone in the Streamlit dashboard for the connected camera.
+id = "restricted-zone"
+
+[face_recognition]
+detector_model = "models/face_detection_yunet_2023mar.onnx"
+recognition_model = "models/face_recognition_sface_2021dec.onnx"
+detection_threshold = 0.70
+similarity_threshold = 0.40
+ambiguity_margin = 0.05
+
+[alerting]
+cooldown_seconds = 60
+
+[storage]
+database_path = "private_data/events.sqlite3"
+evidence_directory = "private_data/evidence"
+retention_days = 30
