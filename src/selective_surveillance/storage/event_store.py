@@ -157,7 +157,14 @@ class EventStore:
                 raise StorageError(f'could not find event to update: {event_id}')
 
             alert_status = row['alert_status']
-            if recognition == 'unknown' and row['recognition'] != 'unknown':
+            if recognition == 'known':
+                alert_status = 'resolved_known'
+                if row['track_id'] is not None:
+                    db.execute(
+                        'DELETE FROM cooldowns WHERE zone = ? AND track_id = ?',
+                        (row['zone'], str(row['track_id'])),
+                    )
+            elif recognition == 'unknown' and row['recognition'] != 'unknown':
                 alert_status = self._claim_alert(
                     db,
                     row['zone'],

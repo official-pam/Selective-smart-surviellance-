@@ -250,9 +250,10 @@ def convert_database_events():
 
         alert_status = event.get("alert_status", "not_applicable")
         alert_text_by_status = {
-            "dashboard_alert": "On-screen dashboard alert",
+            "dashboard_alert": "Potential intruder — restricted-zone entry",
             "notified": "On-screen dashboard alert",
             "cooldown": "Repeated alert suppressed",
+            "resolved_known": "Resolved — registered person confirmed",
             "not_applicable": "No unknown identity match",
         }
         alert_text = alert_text_by_status.get(
@@ -278,7 +279,11 @@ def convert_database_events():
 
             "id": str(event.get("id", "")),
 
-            "event_type": "Restricted Zone Entry",
+            "event_type": (
+                "Potential Intruder — Restricted Zone Entry"
+                if alert_status in {"dashboard_alert", "cooldown"}
+                else "Restricted Zone Entry"
+            ),
 
             "recognition": recognition_text,
 
@@ -699,19 +704,20 @@ def monitoring_loop():
                 st.info(f"Checking face — attempt {event.get('face_attempts', 0)} of {controller.max_face_attempts}. {message}")
             elif event["event"] != "zone_entry":
                 continue
-            elif status == "Unknown":
+            else:
                 alert_status = event.get("storage", {}).get("alert_status")
                 if alert_status == "dashboard_alert":
-                    st.error(f"Identity not matched inside the restricted zone. {message}")
-                    st.toast("An identity-mismatch alert was added to the dashboard.")
+                    st.error(
+                        "Potential intruder entered the restricted zone. "
+                        f"Recognition is pending; an unclear or missing face is not treated as a verified identity. {message}"
+                    )
+                    st.toast("Potential intruder entry recorded in the dashboard.")
+                elif alert_status == "cooldown":
+                    st.warning(f"Potential intruder entry recorded; repeat alert is in cooldown. {message}")
+                elif status == "Known":
+                    st.info(f"Known person entered the restricted zone. {message}")
                 else:
-                    st.warning(f"Repeated identity-mismatch entry; alert cooldown applies. {message}")
-            elif status == "Known":
-                st.info(f"Known person entered the restricted zone. {message}")
-            else:
-                st.warning(
-                    f"Person entered, but identity could not be confirmed. {message}"
-                )
+                    st.warning(f"Person entered, but identity could not be confirmed. {message}")
 
     st.session_state.events = convert_database_events()
 

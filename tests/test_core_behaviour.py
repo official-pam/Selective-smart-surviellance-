@@ -20,10 +20,10 @@ from selective_surveillance.dashboard.zone_config import (
 from selective_surveillance.storage.event_store import EventStore
 
 
-def test_dashboard_alert_policy_only_alerts_on_a_clear_unknown():
+def test_dashboard_alert_policy_alerts_until_a_person_is_confirmed_known():
     assert should_raise_dashboard_alert(False) is True
     assert should_raise_dashboard_alert(True) is False
-    assert should_raise_dashboard_alert(None) is False
+    assert should_raise_dashboard_alert(None) is True
 
 
 def test_scenario_threshold_respects_false_accept_limit():
@@ -197,6 +197,6 @@ def test_event_store_applies_dashboard_alert_and_cooldown(tmp_path):
     assert repeated["alert_status"] == "cooldown"
     assert later["alert_status"] == "dashboard_alert"
     assert known["alert_status"] == "not_applicable"
-    assert unclear["alert_status"] == "not_applicable"
+    assert unclear["alert_status"] == "dashboard_alert"
     assert len(store.list_events()) == 5
-    assert store.latest_dashboard_alert()["recognition"] == "unknown"
+    assert store.latest_dashboard_alert()["recognition"] == "inconclusive"
