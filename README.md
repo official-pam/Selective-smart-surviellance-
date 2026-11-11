@@ -70,6 +70,10 @@ An alert means “the system has not yet confirmed this entrant as registered.�
 
 Changes to shared records, configuration, dependencies, or module interfaces should be coordinated with the integration lead. Keep experiment code in Python notebooks; keep the runnable application in `src/`.
 
+## Project supervision and institutional reference
+
+**Project supervisors:** Stephen Ayuba and Rizama Victor. **Institutional reference:** [National Centre for Artificial Intelligence and Robotics (NCAIR)](https://ncair.nitda.gov.ng/), under Nigeria’s National Information Technology Development Agency (NITDA).
+
 ## Repository layout
 
 ```text
