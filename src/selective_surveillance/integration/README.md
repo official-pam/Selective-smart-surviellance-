@@ -1,0 +1,5 @@
+# Integration
+
+**Owner: Josiah Frank Achile (suggested integration lead).** `controller.py` connects camera capture, detection/zone tracking, face recognition and local event storage behind the Streamlit dashboard. It accepts an integer webcam index or a stream/file address, starts only after a camera and zone are set, checks faces for tracked people while they remain inside the zone, and returns event updates for display.
+
+The system emits one stored event on zone entry, then updates its face result as later frames yield a clearer view; it does not create duplicate zone-entry events for retries. Face detection runs only for tracked people inside the restricted zone and stops after a known match, zone exit, or twelve attempts. Unclear faces remain inconclusive and are not treated as unknown-person alerts. The dashboard shows per-frame processing time, and the operator can hide its preview while processing continues. Low-light enhancement improves shadow detail but cannot recover detail the camera did not capture. Save events locally before displaying dashboard notices. There is no external message delivery or internet requirement.

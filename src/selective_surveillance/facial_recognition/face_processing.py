@@ -1,0 +1,122 @@
+"""Face detection, alignment and SFace embedding extraction."""
+
+from pathlib import Path
+import cv2
+import numpy as np
+
+from .config import (
+    DETECTOR_MODEL,
+    RECOGNITION_MODEL,
+    MAX_IMAGE_SIDE,
+    DETECTION_THRESHOLD,
+    NMS_THRESHOLD,
+)
+
+
+class FaceProcessor:
+    """Load models once and process one face per input image."""
+
+    def __init__(
+        self,
+        models_dir,
+        detector_model=DETECTOR_MODEL,
+        recognition_model=RECOGNITION_MODEL,
+        detection_threshold=DETECTION_THRESHOLD,
+    ):
+        models_dir = Path(models_dir)
+
+        detector_path = models_dir / detector_model
+        recognition_path = models_dir / recognition_model
+
+        # Fail clearly if either pretrained model is missing.
+        for path in (detector_path, recognition_path):
+            if not path.is_file():
+                raise FileNotFoundError(f"Missing model: {path}")
+
+        self.detector = cv2.FaceDetectorYN.create(
+            str(detector_path), "", (320, 320),
+            score_threshold=detection_threshold,
+            nms_threshold=NMS_THRESHOLD
+        )
+
+        self.recognizer = cv2.FaceRecognizerSF.create(
+            str(recognition_path), ""
+        )
+
+    @staticmethod
+    def _improve_dark_detection_image(image_bgr):
+        """Lift shadow detail for YuNet only, without changing SFace pixels."""
+        luminance = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2YCrCb)[:, :, 0]
+        if float(np.mean(luminance)) >= 100:
+            return image_bgr
+
+        ycrcb = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2YCrCb)
+        clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+        ycrcb[:, :, 0] = clahe.apply(ycrcb[:, :, 0])
+        return cv2.cvtColor(ycrcb, cv2.COLOR_YCrCb2BGR)
+
+    def extract(self, image_bgr):
+        """Return a normalized embedding and the aligned BGR face."""
+
+        # OpenCV expects a nonempty, three-channel uint8 BGR image.
+        if (
+            not isinstance(image_bgr, np.ndarray)
+            or image_bgr.size == 0
+            or image_bgr.ndim != 3
+            or image_bgr.shape[2] != 3
+            or image_bgr.dtype != np.uint8
+        ):
+            raise ValueError("Expected a nonempty uint8 BGR colour image.")
+
+        # Preserve the original proportions while limiting image size.
+        height, width = image_bgr.shape[:2]
+        scale = min(1.0, MAX_IMAGE_SIDE / max(height, width))
+
+        resized = cv2.resize(
+            image_bgr,
+            (max(1, round(width * scale)), max(1, round(height * scale)))
+        )
+
+        # YuNet may miss faces in shadow, so improve only its detection input.
+        # SFace alignment and embeddings still use the original pixels, keeping
+        # enrollment and recognition on the same appearance pipeline.
+        detection_image = self._improve_dark_detection_image(resized)
+
+        # Detect faces using the resized image's dimensions.
+        h, w = resized.shape[:2]
+        self.detector.setInputSize((w, h))
+        _, faces = self.detector.detect(detection_image)
+
+        # Avoid choosing an identity from an ambiguous multi-face image.
+        if faces is None or len(faces) != 1:
+            raise ValueError("Expected exactly one detectable face.")
+
+        # Align and encode using the same image and landmark coordinates.
+        aligned = self.recognizer.alignCrop(resized, faces[0])
+        vector = self.embedding_from_aligned_face(aligned)
+
+        return vector, aligned
+
+    def embedding_from_aligned_face(self, aligned_face):
+        """Return a normalized SFace embedding from an aligned BGR face."""
+        if (
+            not isinstance(aligned_face, np.ndarray)
+            or aligned_face.size == 0
+            or aligned_face.ndim != 3
+            or aligned_face.shape[2] != 3
+            or aligned_face.dtype != np.uint8
+        ):
+            raise ValueError("Expected a nonempty uint8 BGR aligned face image.")
+
+        vector = self.recognizer.feature(aligned_face).flatten()
+
+        length = np.linalg.norm(vector)
+
+        if (
+            vector.shape != (128,)
+            or not np.isfinite(vector).all()
+            or length == 0
+        ):
+            raise ValueError("Invalid SFace embedding.")
+
+        return (vector / length).astype(np.float32)
